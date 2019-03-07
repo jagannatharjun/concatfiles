@@ -8,6 +8,10 @@
 
 class cf_sequential : public gupta::cf_outputstream {
 public:
+  virtual ~cf_sequential() {
+    if (CurrentFile_)
+      std::fclose(CurrentFile_);
+  }
   cf_sequential(gupta::cf_path base_dir) : BaseDir_{std::move(base_dir)} {
     for (const auto f : std::filesystem::recursive_directory_iterator{BaseDir_})
       if (!std::filesystem::is_directory(f))
@@ -16,6 +20,8 @@ public:
   }
   using gupta::cf_outputstream::size_type;
   size_type read(uint8_t *buffer, size_type buffer_size) override {
+    if (!CurrentFile_)
+      return 0;
     size_type write_size = 0;
     if (InternalBufferPos_ < InternalBuffer_.size()) {
       write_size = std::min<int64_t>(buffer_size, InternalBuffer_.size() -
@@ -23,16 +29,25 @@ public:
       memcpy_s(buffer, buffer_size, InternalBuffer_.data() + InternalBufferPos_,
                write_size);
       InternalBufferPos_ += write_size;
+      assert(InternalBufferPos_ <= InternalBuffer_.size());
       return write_size;
     }
+    assert(InternalBufferPos_ == InternalBuffer_.size());
 
-    if (feof(CurrentFile_) || ferror(CurrentFile_)) {
+    if (feof(CurrentFile_)) {
       fclose(CurrentFile_);
       CurrentFile_ = open_next_file();
       return read(buffer, buffer_size); // supply new InternalBuffer first
     }
 
-    return std::fread(buffer, 1, buffer_size, CurrentFile_);
+    auto read_sz = std::fread(buffer, 1, buffer_size, CurrentFile_);
+    if (!read_sz) {
+      // don't return zero if we have more files available
+      fclose(CurrentFile_);
+      CurrentFile_ = open_next_file();
+      return read(buffer, buffer_size);
+    }
+    return read_sz;
   }
 
 private:
@@ -48,9 +63,12 @@ private:
 
   std::FILE *open_next_file() {
     CurrentFileIndex_++;
+    if (CurrentFileIndex_ == FileList_.size())
+      return nullptr;
     assert(InternalBufferPos_ == InternalBuffer_.size() &&
            "Internal Buffer should be empty before opening new file");
     InternalBuffer_.clear();
+    InternalBufferPos_ = 0;
 
     const auto file_name =
         std::filesystem::relative(current_file(), BaseDir_).string();
@@ -63,7 +81,9 @@ private:
     while (p != e)
       InternalBuffer_.push_back(*p++);
 
-    return std::fopen(FileList_[CurrentFileIndex_].string().c_str(), "rb");
+    auto f = std::fopen(FileList_[CurrentFileIndex_].string().c_str(), "rb");
+    assert(f && "failed to open file");
+    return f;
   }
 };
 
@@ -74,32 +94,33 @@ public:
 
   // Inherited via cf_archive
   virtual std::shared_ptr<gupta::cf_basicfile> next_file() override {
+    if (!buffer_size)
+      return nullptr;
     auto file = std::make_shared<cf_sequentialFile>();
     std::string p;
     auto char_buf = reinterpret_cast<const char *>(buffer);
     gupta::cf_size_type i = 0;
 
     while (i < buffer_size && char_buf[i] != '\t')
-      p += char_buf[i];
+      p += char_buf[i++];
+    assert(i < buffer_size && "buffer doesn't have name, ended before '\t'");
     file->file_path = std::move(p);
     i += 1; // skip last '\t'
 
-    assert(i < buffer_size && "buffer overran before getting the name");
-    assert(i + sizeof gupta::cf_size_type <= buffer_size &&
-           "buffer doesn't have file size, incorrect data");
-
     buffer += i; // buffer to the buffer_size
     buffer_size -= i;
+    assert(sizeof(gupta::cf_size_type) <= buffer_size &&
+           "buffer doesn't have file size, incorrect data");
 
     file->file_size = *reinterpret_cast<const gupta::cf_size_type *>(buffer);
-    i += sizeof file->file_size;
+    i = sizeof file->file_size;
 
     buffer += i; // buffer to the file data
     buffer_size -= i;
 
     assert(file->file_size <= buffer_size &&
            "incorrect buffer size or short buffer was supplied");
-    assert(file->file_size <= 0 && "corrupt data?");
+    assert(file->file_size >= 0 && "corrupt data?");
 
     file->buffer = buffer;
     file->buffer_size = file->file_size;
@@ -125,6 +146,7 @@ private:
           std::min<gupta::cf_size_type>(buffer_size, read_buffer_size);
       std::memcpy(read_buffer, buffer, read_size);
       buffer_size -= read_size;
+      buffer += read_size;
       return read_size;
     }
 
