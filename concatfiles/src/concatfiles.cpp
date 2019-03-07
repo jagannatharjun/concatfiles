@@ -69,29 +69,56 @@ private:
 
 class cf_sequentialArchive : public gupta::cf_archive {
 public:
+  cf_sequentialArchive(const uint8_t *Buffer, gupta::cf_size_type Buffer_size)
+      : buffer{Buffer}, buffer_size{Buffer_size} {}
+
+  // Inherited via cf_archive
+  virtual std::shared_ptr<gupta::cf_basicfile> next_file() override {
+    auto file = std::make_shared<cf_sequentialFile>();
+    std::string p;
+    auto char_buf = reinterpret_cast<const char *>(buffer);
+    gupta::cf_size_type i = 0;
+
+    while (i < buffer_size && char_buf[i] != '\t')
+      p += char_buf[i];
+    file->file_path = std::move(p);
+    i += 1; // skip last '\t'
+
+    assert(i < buffer_size && "buffer overran before getting the name");
+    assert(i + sizeof gupta::cf_size_type <= buffer_size &&
+           "buffer doesn't have file size, incorrect data");
+
+    buffer += i; // buffer to the buffer_size
+    buffer_size -= i;
+
+    file->file_size = *reinterpret_cast<const gupta::cf_size_type *>(buffer);
+    i += sizeof file->file_size;
+
+    buffer += i; // buffer to the file data
+    buffer_size -= i;
+
+    assert(file->file_size <= buffer_size &&
+           "incorrect buffer size or short buffer was supplied");
+    assert(file->file_size <= 0 && "corrupt data?");
+
+    file->buffer = buffer;
+    file->buffer_size = file->file_size;
+    buffer += file->file_size;
+    buffer_size -= file->buffer_size;
+
+    return file;
+  }
+
+private:
+  const uint8_t *buffer;
+  gupta::cf_size_type buffer_size;
+
   class cf_sequentialFile : public gupta::cf_basicfile {
   public:
-    cf_sequentialFile(const uint8_t *Buffer, gupta::cf_size_type Buffer_size)
-        : buffer{Buffer}, buffer_size{Buffer_size} {
-      std::string p;
-      auto char_buf = reinterpret_cast<const char *>(buffer);
-      gupta::cf_size_type i = 0;
-      while (i < buffer_size && char_buf[i] != '\t')
-        p += char_buf[i];
-      file_path = std::move(p);
-      assert(i < buffer_size && "buffer overran before getting the name");
-      assert(i + sizeof gupta::cf_size_type <= buffer_size &&
-             "buffer doesn't have file size, incorrect data");
-      file_size = *reinterpret_cast<const gupta::cf_size_type *>(buffer + i);
-      i += sizeof file_size;
-      buffer += i; // now buffer will only contain file data
-      buffer_size -= i;
-    }
-
     virtual gupta::cf_path path() override { return file_path; }
     virtual gupta::cf_size_type size() override { return file_size; }
-    virtual gupta::cf_size_type read(uint8_t *read_buffer,
-                                     gupta::cf_size_type read_buffer_size) override {
+    virtual gupta::cf_size_type
+    read(uint8_t *read_buffer, gupta::cf_size_type read_buffer_size) override {
       if (!buffer_size)
         return buffer_size;
       auto read_size =
@@ -102,20 +129,12 @@ public:
     }
 
   private:
+    friend class cf_sequentialArchive;
     const uint8_t *buffer;
+    // buffer_size is stored seprately for easier size()
     gupta::cf_size_type buffer_size, file_size;
     gupta::cf_path file_path;
   };
-
-  cf_sequentialArchive(const uint8_t *Buffer, gupta::cf_size_type Buffer_size)
-      : buffer{Buffer}, buffer_size{Buffer_size} {}
-
-  // Inherited via cf_archive
-  virtual std::shared_ptr<gupta::cf_basicfile> next_file() override {}
-
-private:
-  const uint8_t *buffer;
-  gupta::cf_size_type buffer_size;
 };
 
 std::shared_ptr<gupta::cf_outputstream> gupta::concatfiles(cf_path BaseDir) {

@@ -4,8 +4,9 @@
 cmake_minimum_required (VERSION 3.8)
 
 # Add source to this project's executable.
-add_library (concatfiles "concatfiles.cpp" "concatfiles.hpp")
+add_library (concatfiles "src/concatfiles.cpp" "include/concatfiles.hpp")
 set_property(TARGET concatfiles PROPERTY CXX_STANDARD 17)
+target_include_directories(concatfiles PUBLIC "./include/")
 
 
 find_program(CLANG_CL name "clang-cl.exe" HINTS ENV "PATH")

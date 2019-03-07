@@ -27,3 +27,6 @@ if (CMAKE_VERSION VERSION_LESS 2.8.11)
   include_directories("${gtest_SOURCE_DIR}/include")
 endif()
 
+add_executable(basic_tests tests/basic_tests.cpp)
+target_link_libraries(basic_tests gtest gtest_main concatfiles)
+add_test(basic_tests basic_tests)
