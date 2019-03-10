@@ -35,6 +35,7 @@ public:
     assert(InternalBufferPos_ == InternalBuffer_.size());
 
     int64_t read_sz;
+    // if reached eof or the file was empty
     if (feof(CurrentFile_) ||
         !(read_sz = std::fread(buffer, 1, buffer_size, CurrentFile_))) {
       fclose(CurrentFile_);
