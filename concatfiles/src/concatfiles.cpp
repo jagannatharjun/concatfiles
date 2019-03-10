@@ -34,19 +34,14 @@ public:
     }
     assert(InternalBufferPos_ == InternalBuffer_.size());
 
-    if (feof(CurrentFile_)) {
+    int64_t read_sz;
+    if (feof(CurrentFile_) ||
+        !(read_sz = std::fread(buffer, 1, buffer_size, CurrentFile_))) {
       fclose(CurrentFile_);
       CurrentFile_ = open_next_file();
       return read(buffer, buffer_size); // supply new InternalBuffer first
     }
 
-    auto read_sz = std::fread(buffer, 1, buffer_size, CurrentFile_);
-    if (!read_sz) {
-      // don't return zero if we have more files available
-      fclose(CurrentFile_);
-      CurrentFile_ = open_next_file();
-      return read(buffer, buffer_size);
-    }
     return read_sz;
   }
 
