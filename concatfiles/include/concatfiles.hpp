@@ -27,11 +27,11 @@ public:
 class cf_archive {
 public:
   using size_type = int64_t;
-  virtual std::shared_ptr<cf_basicfile> next_file() = 0;
+  virtual std::unique_ptr<cf_basicfile> next_file() = 0;
 };
 
-std::shared_ptr<cf_outputstream> concatfiles(cf_path BaseDir);
-std::shared_ptr<cf_archive> openConcatFileStream(const uint8_t *buf,
+std::unique_ptr<cf_outputstream> concatfiles(cf_path BaseDir);
+std::unique_ptr<cf_archive> openConcatFileStream(const uint8_t *buf,
                                                  cf_size_type buffer_size);
 
 }; // namespace gupta

@@ -26,7 +26,7 @@ std::vector<uint8_t> readAll(gupta::cf_path f) {
   return buf;
 }
 
-template <typename T> std::vector<uint8_t> readAll(T f) {
+template <typename T> std::vector<uint8_t> readAll(T&& f) {
   uint8_t rbuf[10240];
   std::vector<uint8_t> buf;
   int64_t readsz = 0;

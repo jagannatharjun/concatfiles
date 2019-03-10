@@ -89,10 +89,10 @@ public:
       : buffer{Buffer}, buffer_size{Buffer_size} {}
 
   // Inherited via cf_archive
-  virtual std::shared_ptr<gupta::cf_basicfile> next_file() override {
+  virtual std::unique_ptr<gupta::cf_basicfile> next_file() override {
     if (!buffer_size)
       return nullptr;
-    auto file = std::make_shared<cf_sequentialFile>();
+    auto file = std::make_unique<cf_sequentialFile>();
     std::string p;
     auto char_buf = reinterpret_cast<const char *>(buffer);
     gupta::cf_size_type i = 0;
@@ -155,11 +155,11 @@ private:
   };
 };
 
-std::shared_ptr<gupta::cf_outputstream> gupta::concatfiles(cf_path BaseDir) {
-  return std::make_shared<cf_sequential>(std::move(BaseDir));
+std::unique_ptr<gupta::cf_outputstream> gupta::concatfiles(cf_path BaseDir) {
+  return std::make_unique<cf_sequential>(std::move(BaseDir));
 }
 
-std::shared_ptr<gupta::cf_archive>
+std::unique_ptr<gupta::cf_archive>
 gupta::openConcatFileStream(const uint8_t *buf, cf_size_type buffer_size) {
-  return std::make_shared<cf_sequentialArchive>(buf, buffer_size);
+  return std::make_unique<cf_sequentialArchive>(buf, buffer_size);
 }
