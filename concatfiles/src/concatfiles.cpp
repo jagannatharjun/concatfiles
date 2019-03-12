@@ -92,7 +92,11 @@ public:
   virtual std::unique_ptr<gupta::cf_basicfile> next_file() override {
     if (!buffer_size)
       return nullptr;
-    auto file = std::make_unique<cf_sequentialFile>();
+
+    gupta::cf_path file_path;
+    gupta::cf_size_type file_size;
+    const uint8_t *file_buffer;
+
     std::string p;
     auto char_buf = reinterpret_cast<const char *>(buffer);
     gupta::cf_size_type i = 0;
@@ -100,7 +104,7 @@ public:
     while (i < buffer_size && char_buf[i] != '\t')
       p += char_buf[i++];
     assert(i < buffer_size && "buffer doesn't have name, ended before '\t'");
-    file->file_path = std::move(p);
+    file_path = std::move(p);
     i += 1; // skip last '\t'
 
     buffer += i; // buffer to the buffer_size
@@ -108,49 +112,67 @@ public:
     assert(sizeof(gupta::cf_size_type) <= buffer_size &&
            "buffer doesn't have file size, incorrect data");
 
-    file->file_size = *reinterpret_cast<const gupta::cf_size_type *>(buffer);
-    i = sizeof file->file_size;
+    file_size = *reinterpret_cast<const gupta::cf_size_type *>(buffer);
+    i = sizeof file_size;
 
     buffer += i; // buffer to the file data
     buffer_size -= i;
 
-    assert(file->file_size <= buffer_size &&
+    assert(file_size <= buffer_size &&
            "incorrect buffer size or short buffer was supplied");
-    assert(file->file_size >= 0 && "corrupt data?");
+    assert(file_size >= 0 && "corrupt data?");
 
-    file->buffer = buffer;
-    file->buffer_size = file->file_size;
-    buffer += file->file_size;
-    buffer_size -= file->buffer_size;
+    file_buffer = buffer;
+    buffer += file_size; // to the next file buffer pos
+    buffer_size -= file_size;
 
-    return file;
+    return std::make_unique<cf_sequentialFile>(file_path, file_buffer,
+                                               file_size);
   }
 
 private:
   const uint8_t *buffer;
   gupta::cf_size_type buffer_size;
 
-  class cf_sequentialFile : public gupta::cf_basicfile {
+  class cf_sequentialFile : public gupta::cf_seekablefile {
   public:
+    cf_sequentialFile(gupta::cf_path Path, const uint8_t *Buffer,
+                      const gupta::cf_size_type File_Size)
+        : buffer{Buffer}, file_size{File_Size}, buffer_pos{0}, file_path{Path} {
+    }
     virtual gupta::cf_path path() override { return file_path; }
     virtual gupta::cf_size_type size() override { return file_size; }
     virtual gupta::cf_size_type
     read(uint8_t *read_buffer, gupta::cf_size_type read_buffer_size) override {
-      if (!buffer_size)
-        return buffer_size;
-      auto read_size =
-          std::min<gupta::cf_size_type>(buffer_size, read_buffer_size);
+      if (buffer_pos == 0)
+        return buffer_pos;
+      else if (buffer_pos < 0 || buffer_pos > file_size)
+        return -1;
+      auto read_size = std::min<gupta::cf_size_type>(file_size - buffer_pos,
+                                                     read_buffer_size);
       std::memcpy(read_buffer, buffer, read_size);
-      buffer_size -= read_size;
-      buffer += read_size;
+      buffer_pos += read_size;
       return read_size;
     }
 
+    // Inherited via cf_seekablefile
+    virtual int seek(gupta::cf_size_type offset, int origin) override {
+      if (origin == SEEK_SET) {
+        buffer_pos = 0;
+      } else if (origin == SEEK_END) {
+        buffer_pos = file_size;
+      } else if (origin != SEEK_CUR) {
+        return -1L;
+      }
+      return buffer_pos += offset;
+    }
+    virtual gupta::cf_size_type tell() override { return buffer_pos; }
+
   private:
     friend class cf_sequentialArchive;
-    const uint8_t *buffer;
+    const uint8_t *const buffer;
     // buffer_size is stored seprately for easier size()
-    gupta::cf_size_type buffer_size, file_size;
+    gupta::cf_size_type buffer_pos, const file_size;
     gupta::cf_path file_path;
   };
 };

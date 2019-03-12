@@ -21,7 +21,13 @@ public:
   virtual cf_path path() = 0;
   virtual cf_size_type size() = 0;
   virtual cf_size_type read(uint8_t *buffer, cf_size_type buffer_size) = 0;
- 
+};
+
+class cf_seekablefile : public cf_basicfile {
+public:
+  // implements c-style seek function
+  virtual int seek(cf_size_type offset, int origin) = 0;
+  virtual cf_size_type tell() = 0;
 };
 
 class cf_archive {
