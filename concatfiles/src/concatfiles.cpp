@@ -113,6 +113,7 @@ public:
            "buffer doesn't have file size, incorrect data");
 
     file_size = *reinterpret_cast<const gupta::cf_size_type *>(buffer);
+
     i = sizeof file_size;
 
     buffer += i; // buffer to the file data
@@ -144,13 +145,13 @@ private:
     virtual gupta::cf_size_type size() override { return file_size; }
     virtual gupta::cf_size_type
     read(uint8_t *read_buffer, gupta::cf_size_type read_buffer_size) override {
-      if (buffer_pos == 0)
-        return buffer_pos;
-      else if (buffer_pos < 0 || buffer_pos > file_size)
+
+      if (buffer_pos < 0 || buffer_pos > file_size)
         return -1;
       auto read_size = std::min<gupta::cf_size_type>(file_size - buffer_pos,
                                                      read_buffer_size);
-      std::memcpy(read_buffer, buffer, read_size);
+      //printf("read_sz: %lld,buffer_pos: %lld\n", read_size, buffer_pos);
+      std::memcpy(read_buffer, buffer + buffer_pos, read_size);
       buffer_pos += read_size;
       return read_size;
     }

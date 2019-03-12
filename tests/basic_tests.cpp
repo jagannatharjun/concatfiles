@@ -26,11 +26,11 @@ std::vector<uint8_t> readAll(gupta::cf_path f) {
   return buf;
 }
 
-template <typename T> std::vector<uint8_t> readAll(T&& f) {
+template <typename T> std::vector<uint8_t> readAll(T &&f) {
   uint8_t rbuf[10240];
   std::vector<uint8_t> buf;
   int64_t readsz = 0;
-  while ((readsz = f->read(rbuf, sizeof rbuf))) {
+  while ((readsz = f->read(rbuf, sizeof rbuf)) > 0) {
     for (int i = 0; i < readsz; i++)
       buf.push_back(rbuf[i]);
   }
@@ -44,11 +44,50 @@ void dump(const char *f, const std::vector<uint8_t> &buf) {
   fclose(t);
 }
 
+TEST(basicTest, seekingTest) {
+  gupta::cf_path test_dir =
+      R"(E:\Cpp\Projects\Obsolete\WebsiteBuilder-20180812T140735Z-001\WebsiteBuilder)";
+  std::vector<uint8_t> buf;
+
+  {
+    auto cf = gupta::concatfiles(test_dir);
+    buf = readAll(cf);
+    puts("done reading");
+  }
+
+  {
+    auto a = gupta::openConcatFileStream(buf.data(), buf.size());
+    auto l = file_list(test_dir);
+    int i = 0;
+    for (auto f = a->next_file(); f; f = a->next_file(), i++) {
+      auto p =
+          std::find(l.begin(), l.end(),
+                    std::pair<gupta::cf_path, int64_t>(f->path(), f->size()));
+      ASSERT_NE(p, l.end()) << f->path() << " can't found,size - " << f->size();
+      auto originalContent = readAll(test_dir / f->path());
+      for (int j = 0; j < 5; j++) {
+        auto seekablestream = dynamic_cast<gupta::cf_seekablefile *>(f.get());
+        ASSERT_TRUE(seekablestream);
+        seekablestream->seek(0, SEEK_SET);
+        auto archiveContent = readAll(f.get());
+        /*dump("E:\\1", originalContent);
+        dump("E:\\2", archiveContent);*/
+        ASSERT_EQ(originalContent.size(), archiveContent.size()) << j << " run";
+        ASSERT_EQ(originalContent, archiveContent) << j << " run";
+        ASSERT_EQ(seekablestream->tell(), seekablestream->size())
+            << j << " run";
+      }
+    }
+    ASSERT_EQ(l.size(), i) << " a doesn't gave back all files ";
+  }
+}
+
 TEST(basicTest, zeroFileSize) {
   gupta::cf_path test_dir =
       R"(E:\Cpp\Projects\Obsolete\WebsiteBuilder-20180812T140735Z-001\WebsiteBuilder\Debug\Wbuilder.tlog)";
   if (std::filesystem::exists(test_dir / "zerosizefile"))
     std::filesystem::remove(test_dir / "zerosizefile");
+
   {
     auto f = std::fopen((test_dir / "zerosizefile").string().c_str(), "wb");
     fclose(f);
@@ -123,8 +162,6 @@ TEST(basicTest, bigdir) {
     buf = readAll(cf);
     puts("done reading");
   }
-
-  dump("E:\\f", buf);
 
   {
     auto a = gupta::openConcatFileStream(buf.data(), buf.size());
